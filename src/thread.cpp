@@ -1,0 +1,76 @@
+#include "ConsoleState.h"
+#include <MinHook.h>
+#include <stdio.h>
+#include <windows.h>
+
+extern "C" {
+#include <lauxlib.h>
+#include <lua.h>
+#include <lualib.h>
+}
+
+#include "lua/ScriptsLoader_lua.h"
+#include "lua/VahCrash_lua.h"
+#include "lua/core_lua.h"
+#include "lua/hooks_lua.h"
+#include "lua/input_lua.h"
+#include "lua/memory_lua.h"
+
+void PreloadEmbeddedModule(lua_State *L, const char *moduleName,
+                           const unsigned char *bytecode, size_t size) {
+  lua_getglobal(L, "package");
+  lua_getfield(L, -1, "preload");
+
+  if (luaL_loadbuffer(L, (const char *)bytecode, size, moduleName) == LUA_OK) {
+    lua_setfield(L, -2, moduleName);
+  } else {
+    // Ошибка прелоада
+    printf("[Lua] Preload error %s: %s\n", moduleName, lua_tostring(L, -1));
+    lua_pop(L, 1);
+  }
+
+  lua_pop(L, 2);
+}
+
+DWORD WINAPI ModThread(LPVOID lpParam) {
+  AllocConsole();
+  SetConsoleOutputCP(CP_UTF8);
+  FILE *fDummy;
+  freopen_s(&fDummy, "CONOUT$", "w", stdout);
+  freopen_s(&fDummy, "CONOUT$", "w", stderr);
+
+  // Консоль запущена. Инициализация...
+  printf("[RafLoader v%s] Console started. Initializing...\n", RAF_VERSION);
+
+  if (MH_Initialize() != MH_OK) {
+    // Ошибка: MinHook не запустился!
+    printf("[RafLoader v%s] Error: MinHook failed to start!\n", RAF_VERSION);
+    return 1;
+  }
+
+  extern void InitRenderHook();
+  InitRenderHook();
+
+  lua_State *L = luaL_newstate();
+  luaL_openlibs(L);
+
+  PreloadEmbeddedModule(L, "memory", memory_lua, memory_lua_SIZE);
+  PreloadEmbeddedModule(L, "hooks", hooks_lua, hooks_lua_SIZE);
+  PreloadEmbeddedModule(L, "VahCrash", VahCrash_lua, VahCrash_lua_SIZE);
+  PreloadEmbeddedModule(L, "ScriptsLoader", ScriptsLoader_lua,
+                        ScriptsLoader_lua_SIZE);
+  PreloadEmbeddedModule(L, "input", input_lua, input_lua_SIZE);
+
+  printf("[RafLoader v%s] LuaJIT is ready.\n", RAF_VERSION);
+
+  if (luaL_loadbuffer(L, (const char *)core_lua, core_lua_SIZE,
+                      "core_embedded") != LUA_OK ||
+      lua_pcall(L, 0, LUA_MULTRET, 0) != LUA_OK) {
+    printf("[Lua Core Error] %s\n", lua_tostring(L, -1));
+    lua_pop(L, 1);
+  } else {
+    printf("[RafLoader] Core started successfully!\n");
+  }
+
+  return 0;
+}
