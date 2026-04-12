@@ -1,4 +1,7 @@
-# RafLoader (Rise and Fall: Civilization at War)
+<p align="center">
+  <h1>RafLoader (Rise and Fall: Civilization at War)</h1>
+  <img src="images/feature.png" alt="RafLoader Feature" />
+</p>
 
 RafLoader — это lightweight loader для внедрения в **Rise and Fall: Civilization at War** с возможностью расширения логики игры через LuaJIT и C++.
 
