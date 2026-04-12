@@ -85,22 +85,39 @@ RafLoader API можно использовать не только через L
 
 ---
 
-## 🎯 Области применения
-
-- моддинг **Rise and Fall: Civilization at War**
-- изменение игровой логики
-- reverse engineering
-- анализ поведения игры
-- разработка инструментов и расширений
-
----
-
 ## ⚠️ Ограничения
 
 - ориентирован на **x86**
 - UI работает только с **DirectX9**
 - требует знания адресов функций/памяти
 - ошибки в хуках могут приводить к крашу
+
+---
+
+## 💡 Пример
+
+```lua
+local memory = _G.Engine.Memory
+local input  = _G.Engine.Input
+local hooks  = _G.Engine.Hooks
+local crash  = _G.Engine.VahCrash
+
+-- биндим клавишу F
+input.bind(0x46, function()
+    print("Applying NOP")
+    memory.write_nop(0x401000, 5)
+end)
+
+-- хук
+local original
+original = hooks.create(0x401000, "int (__cdecl *NAME)(int)", function(a)
+    print("Hooked:", a)
+    return original(a)
+end)
+
+-- защита от краша
+crash.catch(0x403000, 0x404000)
+```
 
 ---
 
@@ -123,3 +140,4 @@ RafLoader — это универсальная основа для глубок
 - изменять поведение игры в реальном времени  
 - писать моды как на Lua, так и на C++  
 - строить расширяемые системы поверх игры
+
