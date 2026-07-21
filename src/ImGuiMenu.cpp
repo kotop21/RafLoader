@@ -9,8 +9,8 @@ void DrawImGuiMenu() {
   ImGui::SetNextWindowSize(ImVec2(600, 400), ImGuiCond_FirstUseEver);
 
   char windowTitle[128];
-  snprintf(windowTitle, sizeof(windowTitle), "RafLoader Console v%s",
-           RAF_VERSION);
+  snprintf(windowTitle, sizeof(windowTitle),
+           "RafLoader Console v%s | by kotop21", RAF_VERSION);
 
   if (ImGui::Begin(windowTitle, &GIsConsoleOpen)) {
     std::lock_guard<std::mutex> lock(GLogMutex);
