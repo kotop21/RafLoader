@@ -20,18 +20,24 @@ return {
   end,
 
   create_usercall = function(address, callback)
-    local cb = ffi.cast("int (__cdecl *)(int, int, void*, void*, int, int)", callback)
-
+    local cb = ffi.cast("int (__cdecl *)(int32_t, int32_t, int32_t, int32_t, int32_t, int32_t)", callback)
     _G.ActiveCallbacks[tostring(address)] = cb
 
     local orig = _G.Core.CreateUsercallBridge(ffi.cast("void*", address), cb)
-
     if orig ~= nil then
-      print(string.format("[Lua_Hook] Usercall bridge installed at 0x%X", address))
       return orig
     end
+    return nil
+  end,
 
-    print(string.format("[Lua_Hook] ERROR installing usercall at 0x%X", address))
+  create_damage_hook = function(address, callback)
+    local cb = ffi.cast("void (__cdecl *)(void*, int, int, int, int)", callback)
+    _G.ActiveCallbacks["DamagePostHook"] = cb
+
+    local orig = _G.Core.CreateDamagePostHook(ffi.cast("void*", address), cb)
+    if orig ~= nil then
+      return orig
+    end
     return nil
   end
 }

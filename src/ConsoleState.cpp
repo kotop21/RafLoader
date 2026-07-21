@@ -1,5 +1,6 @@
 #define LOG_SYSTEM_IMPLEMENTED
 #include "ConsoleState.h"
+#include <fstream>
 #include <stdio.h>
 
 bool GIsConsoleOpen = false;
@@ -14,6 +15,11 @@ extern "C" __declspec(dllexport) void __cdecl Core_Log(const char *text) {
   GLogBuffer.push_back(std::string(" ") + text);
 
   ::printf("%s\n", text);
+
+  std::ofstream logFile("RafLoader.log", std::ios::app);
+  if (logFile.is_open()) {
+    logFile << text << "\n";
+  }
 }
 
 extern "C" __declspec(dllexport) void __cdecl Core_ToggleConsole(bool state) {

@@ -1,7 +1,6 @@
 #include "RenderHook.h"
 #include "ConsoleState.h"
 #include "ImGuiMenu.h"
-
 #include <MinHook.h>
 #include <d3d9.h>
 #include <imgui.h>
@@ -9,6 +8,8 @@
 #include <imgui_impl_win32.h>
 #include <vector>
 #include <windows.h>
+
+extern void InitLuaEngine();
 
 typedef void (*TickCallback_t)();
 std::vector<TickCallback_t> g_TickCallbacks;
@@ -18,12 +19,22 @@ Core_RegisterTickCallback(TickCallback_t cb) {
   g_TickCallbacks.push_back(cb);
 }
 
+typedef void (*InputCallback_t)(uint32_t uMsg, uintptr_t wParam);
+std::vector<InputCallback_t> g_InputCallbacks;
+
+extern "C" __declspec(dllexport) void __cdecl
+Core_RegisterInputCallback(InputCallback_t cb) {
+  g_InputCallbacks.push_back(cb);
+}
+
 typedef HRESULT(APIENTRY *Present_t)(IDirect3DDevice9 *, const RECT *,
                                      const RECT *, HWND, const RGNDATA *);
 typedef HRESULT(APIENTRY *Reset_t)(IDirect3DDevice9 *, D3DPRESENT_PARAMETERS *);
+typedef void(__fastcall *GameLoop_t)(void *, void *, int32_t *);
 
 Present_t oPresent = nullptr;
 Reset_t oReset = nullptr;
+GameLoop_t oGameLoop = nullptr;
 
 bool g_ImGuiInitialized = false;
 WNDPROC oWndProc = nullptr;
@@ -44,6 +55,12 @@ LRESULT __stdcall WndProc(const HWND hWnd, UINT uMsg, WPARAM wParam,
                          uMsg == WM_MOUSEWHEEL))
     return true;
 
+  if (!GIsConsoleOpen && (uMsg == WM_KEYDOWN || uMsg == WM_KEYUP)) {
+    for (auto cb : g_InputCallbacks) {
+      cb(uMsg, wParam);
+    }
+  }
+
   return CallWindowProc(oWndProc, hWnd, uMsg, wParam, lParam);
 }
 
@@ -60,6 +77,13 @@ HRESULT APIENTRY hkReset(IDirect3DDevice9 *pDevice,
   }
 
   return result;
+}
+
+void __fastcall hkGameLoop(void *ecx, void *edx, int32_t *arg1) {
+  for (auto cb : g_TickCallbacks) {
+    cb();
+  }
+  oGameLoop(ecx, edx, arg1);
 }
 
 HRESULT APIENTRY hkPresent(IDirect3DDevice9 *pDevice, const RECT *pSourceRect,
@@ -80,10 +104,8 @@ HRESULT APIENTRY hkPresent(IDirect3DDevice9 *pDevice, const RECT *pSourceRect,
     ImGui_ImplWin32_Init(hWindow);
     ImGui_ImplDX9_Init(pDevice);
     g_ImGuiInitialized = true;
-  }
 
-  for (auto cb : g_TickCallbacks) {
-    cb();
+    InitLuaEngine();
   }
 
   IDirect3DStateBlock9 *stateBlock = nullptr;
@@ -138,12 +160,13 @@ void InitRenderHook() {
 
     void *presentAddress = vTable[17];
     void *resetAddress = vTable[16];
+    void *updateSceneAddress = (void *)0x0075D8C0;
 
     MH_CreateHook(presentAddress, (void *)hkPresent, (void **)&oPresent);
     MH_CreateHook(resetAddress, (void *)hkReset, (void **)&oReset);
+    MH_CreateHook(updateSceneAddress, (void *)hkGameLoop, (void **)&oGameLoop);
 
-    MH_EnableHook(presentAddress);
-    MH_EnableHook(resetAddress);
+    MH_EnableHook(MH_ALL_HOOKS);
 
     dummyDevice->Release();
   }

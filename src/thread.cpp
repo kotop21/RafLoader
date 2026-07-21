@@ -15,6 +15,20 @@ extern "C" {
 #include "lua/hooks_lua.h"
 #include "lua/input_lua.h"
 #include "lua/memory_lua.h"
+#include "lua/tick_lua.h"
+
+extern "C" void Core_Log(const char *text);
+
+extern void InitRenderHook();
+
+DWORD WINAPI InitHooksThread(LPVOID lpParam) {
+  if (MH_Initialize() == MH_OK) {
+    InitRenderHook();
+  }
+  return 0;
+}
+
+lua_State *G_LuaState = nullptr;
 
 void PreloadEmbeddedModule(lua_State *L, const char *moduleName,
                            const unsigned char *bytecode, size_t size) {
@@ -24,7 +38,6 @@ void PreloadEmbeddedModule(lua_State *L, const char *moduleName,
   if (luaL_loadbuffer(L, (const char *)bytecode, size, moduleName) == LUA_OK) {
     lua_setfield(L, -2, moduleName);
   } else {
-    // Ошибка прелоада
     printf("[Lua] Preload error %s: %s\n", moduleName, lua_tostring(L, -1));
     lua_pop(L, 1);
   }
@@ -32,24 +45,17 @@ void PreloadEmbeddedModule(lua_State *L, const char *moduleName,
   lua_pop(L, 2);
 }
 
-DWORD WINAPI ModThread(LPVOID lpParam) {
-  AllocConsole();
+void InitLuaEngine() {
+  if (G_LuaState != nullptr)
+    return;
+
   SetConsoleOutputCP(CP_UTF8);
   FILE *fDummy;
   freopen_s(&fDummy, "CONOUT$", "w", stdout);
   freopen_s(&fDummy, "CONOUT$", "w", stderr);
 
-  // Консоль запущена. Инициализация...
-  printf("[RafLoader v%s] Console started. Initializing...\n", RAF_VERSION);
-
-  if (MH_Initialize() != MH_OK) {
-    // Ошибка: MinHook не запустился!
-    printf("[RafLoader v%s] Error: MinHook failed to start!\n", RAF_VERSION);
-    return 1;
-  }
-
-  extern void InitRenderHook();
-  InitRenderHook();
+  remove("RafLoader.log");
+  printf("[RafLoader v%s] Initializing Lua on Main Thread...\n", RAF_VERSION);
 
   lua_State *L = luaL_newstate();
   luaL_openlibs(L);
@@ -60,6 +66,7 @@ DWORD WINAPI ModThread(LPVOID lpParam) {
   PreloadEmbeddedModule(L, "ScriptsLoader", ScriptsLoader_lua,
                         ScriptsLoader_lua_SIZE);
   PreloadEmbeddedModule(L, "input", input_lua, input_lua_SIZE);
+  PreloadEmbeddedModule(L, "tick", tick_lua, tick_lua_SIZE);
 
   printf("[RafLoader v%s] LuaJIT is ready.\n", RAF_VERSION);
 
@@ -72,5 +79,5 @@ DWORD WINAPI ModThread(LPVOID lpParam) {
     printf("[RafLoader] Core started successfully!\n");
   }
 
-  return 0;
+  G_LuaState = L;
 }

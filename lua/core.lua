@@ -21,27 +21,26 @@ ffi.cdef [[
     void Core_Log(const char *text);
     bool __cdecl Core_PatchMemory(uintptr_t address, const uint8_t* newBytes, size_t size);
     void* __cdecl Core_CreateHook(void* target, void* detour);
-    void* CreateUsercallBridge(void* targetAddress, void* luaCallback);
+    void* CreateDamagePostHook(void* targetAddress, void* luaCallback);
     void __cdecl Core_RegisterRecoveryPoint(uintptr_t crashAddr, uintptr_t safeAddr);
-
     void __cdecl Core_RegisterTickCallback(void* cb);
+    void __cdecl Core_RegisterInputCallback(void* cb);
 ]]
 
-_G.Core        = ffi.load("RafLoader.asi")
-package.path   = "./scripts/?.lua;?.lua"
+_G.Core            = ffi.load("RafLoader.asi")
+package.path       = "./scripts/?.lua;?.lua"
 
-_G.ActiveHooks = {}
-_G.Engine      = {}
+_G.ActiveHooks     = {}
+_G.Engine          = {}
 
-_G.print       = function(...)
+_G.print           = function(...)
     local args = { ... }
     local str = {}
     for i, v in ipairs(args) do table.insert(str, tostring(v)) end
     _G.Core.Core_Log(table.concat(str, "\t"))
 end
 
-
--- API
+_G.Engine.Tick     = require("tick")
 _G.Engine.Memory   = require("memory")
 _G.Engine.Hooks    = require("hooks")
 _G.Engine.VahCrash = require("VahCrash")
