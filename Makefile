@@ -7,7 +7,8 @@ CXX = i686-w64-mingw32-g++
 CXXFLAGS = -m32 -std=c++17 -O2 -shared -s \
            -ffunction-sections -fdata-sections \
            -DRAF_VERSION=\"$(VERSION)\" \
-           -I./include -I./include/lua -I./lib/luajit -I./lib/minhook -I./lib/imgui
+           -I./include -I./include/lua -I./lib/luajit \
+           -I./lib/minhook -I./lib/minhook/include -I./lib/minhook/src -I./lib/imgui
 
 LDFLAGS = -static -static-libgcc -static-libstdc++ \
           -Wl,--gc-sections \
