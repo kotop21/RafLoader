@@ -3,130 +3,111 @@
   <img src="images/feature.png" alt="RafLoader Feature" />
 </div>
 
-RafLoader — это lightweight loader для внедрения в **Rise and Fall: Civilization at War** с возможностью расширения логики игры через LuaJIT и C++.
-
-Проект предназначен для моддинга, анализа и изменения поведения игры в рантайме.
+RafLoader is a lightweight loader designed for **Rise and Fall: Civilization at War**, enabling runtime modifications and enhancements through LuaJIT and C++.
 
 ---
 
-## 🚀 Что делает RafLoader
+## 🚀 Overview
 
-После загрузки (`.asi` / DLL) в игру:
+RafLoader injects into the game process to:
 
-- внедряется в процесс **Rise and Fall: Civilization at War**
-- инициализирует систему хуков (MinHook)
-- поднимает LuaJIT окружение
-- подключает встроенные API
-- перехватывает рендер (DirectX9)
-- запускает пользовательские скрипты
-- отображает debug UI поверх игры
+- Hook internal functions using **MinHook**.
+- Initialize a LuaJIT environment.
+- Intercept rendering via DirectX9.
+- Execute user-defined scripts.
+- Display a debug UI overlay.
 
 ---
 
-## 🧩 Основные возможности
+## 🧩 Key Features
 
-### 🪝 Перехват функций (Hooks)
-- перехват внутренних функций игры по адресу
-- изменение или полная замена логики игры
-- поддержка нестандартных вызовов (usercall)
-- реализовано через **MinHook**
+### 🪝 Function Hooks
 
----
+- Intercept and modify game logic.
+- Support for non-standard calls (usercall).
+- Implemented using **MinHook** for efficient hooking.
 
-### 💾 Работа с памятью
-- чтение и изменение игровых значений
-- патчинг байтов в коде игры
-- изменение логики без пересборки игры
-- управление защитой памяти (VirtualProtect)
+### 💾 Memory Management
 
----
+- Read and modify in-game values dynamically.
+- Patch game code without recompilation.
+- Manage memory protection using `VirtualProtect`.
 
-### ⌨️ Обработка ввода
-- отслеживание нажатий клавиш
-- биндинг действий
-- работает через WinAPI (`GetAsyncKeyState`)
 
----
+### 🛡️ Crash Handling
 
-### 🛡️ Обработка крашей
-- перехват `EXCEPTION_ACCESS_VIOLATION`
-- система recovery point
-- возможность избежать вылетов при ошибках
+- Recover from `EXCEPTION_ACCESS_VIOLATION` errors.
+- Implement recovery points to prevent crashes and ensure stability.
 
----
+### 🎨 Debug Overlay
 
-### 🎨 Overlay интерфейс (ImGui)
-- встроенное debug-меню
-- вывод логов
-- работает поверх игры
-- открывается/закрывается клавишей **F1**
+- Built-in debug menu using **ImGui**.
+- Display logs and toggle UI with **F1**.
+- Works seamlessly over the game interface.
 
----
+### 🔁 Tick System
 
-### 🔁 Tick-система
-- выполнение пользовательского кода каждый кадр
-- используется для логики модов и обновлений
+- Execute user-defined code every frame.
+- Ideal for implementing mod logic and updates.
 
----
+### 📂 Lua Script Loader
 
-## 🧱 Расширяемость API
+- Automatically loads Lua scripts from the `scripts` folder.
+- Supports modular script organization.
+- Example structure:
 
-RafLoader API можно использовать не только через Lua:
+  ```lua
+  -- Example script in `scripts` folder
+  local memory = _G.Engine.Memory
 
-- поддержка использования API из **C/C++**
-- возможность писать собственные `.asi` плагины
-- доступ к экспортируемым функциям (`Core_*`)
-- интеграция с другими нативными модулями
-
-Это позволяет:
-- комбинировать Lua и нативный код
-- выносить тяжелую логику в C++
-- строить полноценные модульные системы
+  print("Applying NOP")
+  memory.write_nop(0x401000, 5)
+  ```
 
 ---
 
-## ⚠️ Ограничения
+## 🛠️ Example Usage
 
-- ориентирован на **x86**
-- UI работает только с **DirectX9**
-- требует знания адресов функций/памяти
-- ошибки в хуках могут приводить к крашу
-
----
-
-## 💡 Пример
+Here’s a complete example demonstrating RafLoader’s capabilities:
 
 ```lua
 local memory = _G.Engine.Memory
-local input  = _G.Engine.Input
 local hooks  = _G.Engine.Hooks
 local crash  = _G.Engine.VahCrash
 
--- биндим клавишу F
-input.bind(0x46, function()
-    print("Applying NOP")
-    memory.write_nop(0x401000, 5)
-end)
+print("Applying NOP")
+memory.write_nop(0x401000, 5)
 
--- хук
+-- Hook a function
 local original
 original = hooks.create(0x401000, "int (__cdecl *NAME)(int)", function(a)
     print("Hooked:", a)
     return original(a)
 end)
 
--- защита от краша
+-- Set up crash recovery
 crash.catch(0x403000, 0x404000)
 ```
 
+This example demonstrates how to bind keys, hook functions, and handle crashes effectively using RafLoader.
+
 ---
 
-## 💡 Преимущества
+## 🧱 Extensibility
 
-- Lua + C++ в одном проекте
-- быстрый цикл разработки
-- прямой доступ к внутренностям игры
-- готовая система хуков
-- встроенный UI и логирование
-- crash recovery механизм
+- Use the API in Lua or C++.
+- Write custom `.asi` plugins.
+- Combine Lua scripting with native code for modular systems.
 
+---
+
+## ⚠️ Limitations
+
+- Targeted for **x86** architecture.
+- UI limited to **DirectX9**.
+- Requires knowledge of memory addresses.
+- Hooking errors may cause crashes.
+
+---
+
+RafLoader simplifies modding and debugging, offering a powerful toolkit for developers and enthusiasts.
