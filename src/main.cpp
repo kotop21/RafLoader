@@ -9,7 +9,13 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call,
     DisableThreadLibraryCalls(hModule);
     SetupVectoredRecovery();
 
-    CreateThread(nullptr, 0, InitHooksThread, hModule, 0, nullptr);
+    HANDLE hThread =
+        CreateThread(nullptr, 0, InitHooksThread, hModule, 0, nullptr);
+
+    if (hThread) {
+      CloseHandle(hThread);
+    }
   }
+
   return TRUE;
 }

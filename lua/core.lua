@@ -27,18 +27,20 @@ ffi.cdef([[
 ]])
 
 _G.Core = ffi.load("RafLoader.asi")
-package.path = "./scripts/?.lua;?.lua"
+
+package.path = "./scripts/?.lua;?.lua;" .. package.path
 
 _G.ActiveHooks = {}
 _G.Engine = {}
 
 _G.print = function(...)
-	local args = { ... }
-	local str = {}
-	for i, v in ipairs(args) do
-		table.insert(str, tostring(v))
+	local args = {}
+
+	for i = 1, select("#", ...) do
+		args[#args + 1] = tostring(select(i, ...))
 	end
-	_G.Core.Core_Log(table.concat(str, "\t"))
+
+	Core.Core_Log(table.concat(args, "\t"))
 end
 
 _G.Engine.Tick = require("tick")
@@ -48,5 +50,5 @@ _G.Engine.VahCrash = require("VahCrash")
 
 local loader = require("ScriptsLoader")
 
-print("[Core] System ready. API composed. \n")
+print("[Core] System ready. API composed.")
 loader("scripts")
