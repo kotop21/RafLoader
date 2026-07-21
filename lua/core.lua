@@ -51,4 +51,11 @@ _G.Engine.VahCrash = require("VahCrash")
 local loader = require("ScriptsLoader")
 
 print("[Core] System ready. API composed.")
-loader("scripts")
+
+local scripts_loaded = false
+_G.Engine.Tick.add(function()
+	if not scripts_loaded then
+		scripts_loaded = true
+		loader("scripts")
+	end
+end)

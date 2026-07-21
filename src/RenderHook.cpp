@@ -11,8 +11,6 @@
 #include <vector>
 #include <windows.h>
 
-extern void InitLuaEngine();
-
 typedef void (*TickCallback_t)();
 
 std::vector<TickCallback_t> g_TickCallbacks;
@@ -28,7 +26,9 @@ typedef HRESULT(APIENTRY *Present_t)(IDirect3DDevice9 *, const RECT *,
 
 typedef HRESULT(APIENTRY *Reset_t)(IDirect3DDevice9 *, D3DPRESENT_PARAMETERS *);
 
-typedef void(__fastcall *GameLoop_t)(void *, void *, int32_t *);
+// __thiscall для MSVC x86 эмулируется через __fastcall (ECX = this, EDX =
+// dummy)
+typedef void(__fastcall *GameLoop_t)(void *pThis, void *edxDummy);
 
 Present_t oPresent = nullptr;
 Reset_t oReset = nullptr;
@@ -71,21 +71,32 @@ HRESULT APIENTRY hkReset(IDirect3DDevice9 *pDevice,
   return hr;
 }
 
-void __fastcall hkGameLoop(void *ecx, void *edx, int32_t *arg1) {
-
-  std::vector<TickCallback_t> callbacks = g_TickCallbacks;
-
-  for (auto cb : callbacks) {
-    if (cb)
-      cb();
+void __fastcall hkGameLoop(void *pThis, void *edxDummy) {
+  if (g_ImGuiInitialized) {
+    std::vector<TickCallback_t> callbacks = g_TickCallbacks;
+    for (auto cb : callbacks) {
+      if (cb)
+        cb();
+    }
   }
 
-  oGameLoop(ecx, edx, arg1);
+  if (oGameLoop) {
+    oGameLoop(pThis, edxDummy);
+  }
 }
 
 HRESULT APIENTRY hkPresent(IDirect3DDevice9 *pDevice, const RECT *pSourceRect,
                            const RECT *pDestRect, HWND hDestWindowOverride,
                            const RGNDATA *pDirtyRegion) {
+
+  if (!pDevice)
+    return oPresent(pDevice, pSourceRect, pDestRect, hDestWindowOverride,
+                    pDirtyRegion);
+
+  if (pDevice->TestCooperativeLevel() != D3D_OK) {
+    return oPresent(pDevice, pSourceRect, pDestRect, hDestWindowOverride,
+                    pDirtyRegion);
+  }
 
   if (!g_ImGuiInitialized) {
 
@@ -97,10 +108,10 @@ HRESULT APIENTRY hkPresent(IDirect3DDevice9 *pDevice, const RECT *pSourceRect,
 
     HWND hWindow = params.hFocusWindow;
 
-    if (!hWindow)
+    if (!hWindow || !IsWindow(hWindow))
       hWindow = GetForegroundWindow();
 
-    if (!hWindow)
+    if (!hWindow || !IsWindow(hWindow))
       return oPresent(pDevice, pSourceRect, pDestRect, hDestWindowOverride,
                       pDirtyRegion);
 
@@ -114,7 +125,7 @@ HRESULT APIENTRY hkPresent(IDirect3DDevice9 *pDevice, const RECT *pSourceRect,
     ImGui::CreateContext();
 
     if (!ImGui_ImplWin32_Init(hWindow)) {
-
+      SetWindowLongPtr(hWindow, GWL_WNDPROC, (LONG_PTR)oWndProc);
       ImGui::DestroyContext();
       return oPresent(pDevice, pSourceRect, pDestRect, hDestWindowOverride,
                       pDirtyRegion);
@@ -122,14 +133,13 @@ HRESULT APIENTRY hkPresent(IDirect3DDevice9 *pDevice, const RECT *pSourceRect,
 
     if (!ImGui_ImplDX9_Init(pDevice)) {
       ImGui_ImplWin32_Shutdown();
+      SetWindowLongPtr(hWindow, GWL_WNDPROC, (LONG_PTR)oWndProc);
       ImGui::DestroyContext();
       return oPresent(pDevice, pSourceRect, pDestRect, hDestWindowOverride,
                       pDirtyRegion);
     }
 
     g_ImGuiInitialized = true;
-
-    InitLuaEngine();
   }
 
   IDirect3DStateBlock9 *stateBlock = nullptr;
@@ -168,7 +178,26 @@ void InitRenderHook() {
   if (!dummyWindow)
     return;
 
-  IDirect3D9 *d3d = Direct3DCreate9(D3D_SDK_VERSION);
+  HMODULE hD3D9 = GetModuleHandleA("d3d9.dll");
+  if (!hD3D9) {
+    hD3D9 = LoadLibraryA("d3d9.dll");
+  }
+
+  if (!hD3D9) {
+    DestroyWindow(dummyWindow);
+    return;
+  }
+
+  typedef IDirect3D9 *(WINAPI * D3DCreate9_t)(UINT);
+  D3DCreate9_t pDirect3DCreate9 =
+      (D3DCreate9_t)GetProcAddress(hD3D9, "Direct3DCreate9");
+
+  if (!pDirect3DCreate9) {
+    DestroyWindow(dummyWindow);
+    return;
+  }
+
+  IDirect3D9 *d3d = pDirect3DCreate9(D3D_SDK_VERSION);
 
   if (!d3d) {
     DestroyWindow(dummyWindow);

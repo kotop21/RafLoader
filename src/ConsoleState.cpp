@@ -1,33 +1,34 @@
-#include <map>
-#include <stdint.h>
-#include <windows.h>
+#define LOG_SYSTEM_IMPLEMENTED
 
-std::map<uintptr_t, uintptr_t> RecoveryPoints;
+#include "ConsoleState.h"
 
-LONG WINAPI VehRecoveryHandler(EXCEPTION_POINTERS *ExceptionInfo) {
-  if (ExceptionInfo->ExceptionRecord->ExceptionCode ==
-      EXCEPTION_ACCESS_VIOLATION) {
+#include <fstream>
+#include <mutex>
+#include <stdio.h>
 
-    uintptr_t faultAddress =
-        (uintptr_t)ExceptionInfo->ExceptionRecord->ExceptionAddress;
+bool GIsConsoleOpen = false;
+std::vector<std::string> GLogBuffer;
+std::mutex GLogMutex;
 
-    auto it = RecoveryPoints.find(faultAddress);
-    if (it != RecoveryPoints.end()) {
-      ExceptionInfo->ContextRecord->Eip = it->second;
+extern "C" __declspec(dllexport) void __cdecl Core_Log(const char *text) {
+  if (!text)
+    return;
 
-      return EXCEPTION_CONTINUE_EXECUTION;
-    }
+  {
+    std::lock_guard<std::mutex> lock(GLogMutex);
+    GLogBuffer.emplace_back(text);
   }
 
-  // Если ничего не передано игра вылетит
-  return EXCEPTION_CONTINUE_SEARCH;
+  ::printf("%s\n", text);
+
+  static std::ofstream logFile("RafLoader.log", std::ios::app);
+
+  if (logFile.is_open()) {
+    logFile << text << '\n';
+    logFile.flush();
+  }
 }
 
-void SetupVectoredRecovery() {
-  AddVectoredExceptionHandler(1, VehRecoveryHandler);
-}
-
-extern "C" __declspec(dllexport) void __cdecl
-Core_RegisterRecoveryPoint(uintptr_t faultAddr, uintptr_t recoveryAddr) {
-  RecoveryPoints[faultAddr] = recoveryAddr;
+extern "C" __declspec(dllexport) void __cdecl Core_ToggleConsole(bool state) {
+  GIsConsoleOpen = state;
 }

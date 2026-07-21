@@ -1,4 +1,4 @@
-VERSION = 0.1.6
+VERSION = 0.2.0
 
 BUILD_DIR = build
 
@@ -20,7 +20,7 @@ IMGUI_SRC = lib/imgui/imgui.cpp \
             lib/imgui/imgui_impl_dx9.cpp \
             lib/imgui/imgui_impl_win32.cpp
 
-SRC = src/main.cpp src/thread.cpp src/memory.cpp src/HooksManager/DefaultHooks.cpp src/HooksManager/DataPathHook.cpp src/CrashHandler.cpp src/ConsoleState.cpp src/ImGuiMenu.cpp src/RenderHook.cpp $(IMGUI_SRC)
+SRC = src/main.cpp src/thread.cpp src/memory.cpp src/HooksManager/DefaultHooks.cpp src/CrashHandler.cpp src/ConsoleState.cpp src/ImGuiMenu.cpp src/RenderHook.cpp $(IMGUI_SRC)
 
 OUT = $(BUILD_DIR)/RafLoader.asi
 

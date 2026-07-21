@@ -1,5 +1,6 @@
 #include "ConsoleState.h"
 #include <MinHook.h>
+#include <mutex>
 #include <stdio.h>
 #include <windows.h>
 
@@ -19,6 +20,7 @@ extern "C" {
 extern "C" void Core_Log(const char *text);
 
 extern void InitRenderHook();
+void InitLuaEngine();
 
 DWORD WINAPI InitHooksThread(LPVOID lpParam) {
   MH_STATUS status = MH_Initialize();
@@ -29,11 +31,13 @@ DWORD WINAPI InitHooksThread(LPVOID lpParam) {
   }
 
   InitRenderHook();
+  InitLuaEngine();
 
   return 0;
 }
 
 lua_State *G_LuaState = nullptr;
+static std::mutex g_LuaInitMutex;
 
 void PreloadEmbeddedModule(lua_State *L, const char *moduleName,
                            const unsigned char *bytecode, size_t size) {
@@ -51,18 +55,18 @@ void PreloadEmbeddedModule(lua_State *L, const char *moduleName,
 }
 
 void InitLuaEngine() {
+  std::lock_guard<std::mutex> lock(g_LuaInitMutex);
+
   if (G_LuaState != nullptr)
     return;
 
-  SetConsoleOutputCP(CP_UTF8);
+  if (GetConsoleWindow() != NULL) {
+    SetConsoleOutputCP(CP_UTF8);
 
-  FILE *fDummy = nullptr;
-
-  if (freopen_s(&fDummy, "CONOUT$", "w", stdout) != 0)
-    printf("[RafLoader] Failed to redirect stdout.\n");
-
-  if (freopen_s(&fDummy, "CONOUT$", "w", stderr) != 0)
-    printf("[RafLoader] Failed to redirect stderr.\n");
+    FILE *fDummy = nullptr;
+    freopen_s(&fDummy, "CONOUT$", "w", stdout);
+    freopen_s(&fDummy, "CONOUT$", "w", stderr);
+  }
 
   remove("RafLoader.log");
 
