@@ -1,6 +1,5 @@
 <div align="center">
   <h1>⚔️ RafLoader (Rise and Fall: Civilization at War)</h1>
-  <img src="images/feature.png" alt="RafLoader Feature" />
 </div>
 
 RafLoader is a lightweight ASI loader for **Rise and Fall: Civilization at War**, providing runtime modding through **LuaJIT** and native **C++** APIs.
