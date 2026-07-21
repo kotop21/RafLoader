@@ -1,132 +1,210 @@
 <div align="center">
   <h1>⚔️ RafLoader (Rise and Fall: Civilization at War)</h1>
-  <img src="images/feature.png" alt="RafLoader Feature" />
 </div>
 
-RafLoader — это lightweight loader для внедрения в **Rise and Fall: Civilization at War** с возможностью расширения логики игры через LuaJIT и C++.
-
-Проект предназначен для моддинга, анализа и изменения поведения игры в рантайме.
+RafLoader is a lightweight ASI loader for **Rise and Fall: Civilization at War**, providing runtime modding through **LuaJIT** and native **C++** APIs.
 
 ---
 
-## 🚀 Что делает RafLoader
+## 🚀 Overview
 
-После загрузки (`.asi` / DLL) в игру:
+RafLoader injects into the game process and provides:
 
-- внедряется в процесс **Rise and Fall: Civilization at War**
-- инициализирует систему хуков (MinHook)
-- поднимает LuaJIT окружение
-- подключает встроенные API
-- перехватывает рендер (DirectX9)
-- запускает пользовательские скрипты
-- отображает debug UI поверх игры
-
----
-
-## 🧩 Основные возможности
-
-### 🪝 Перехват функций (Hooks)
-- перехват внутренних функций игры по адресу
-- изменение или полная замена логики игры
-- поддержка нестандартных вызовов (usercall)
-- реализовано через **MinHook**
+- Native function hooking powered by **MinHook**.
+- Embedded LuaJIT runtime.
+- DirectX9 rendering hook.
+- Automatic Lua script loading.
+- Built-in ImGui debug console.
+- Crash recovery helpers.
+- Per-frame (tick) callbacks.
 
 ---
 
-### 💾 Работа с памятью
-- чтение и изменение игровых значений
-- патчинг байтов в коде игры
-- изменение логики без пересборки игры
-- управление защитой памяти (VirtualProtect)
+# 🧩 Features
 
----
+## 🪝 Function Hooks
 
-### ⌨️ Обработка ввода
-- отслеживание нажатий клавиш
-- биндинг действий
-- работает через WinAPI (`GetAsyncKeyState`)
+Create native hooks directly from Lua.
 
----
+Supported hook types:
 
-### 🛡️ Обработка крашей
-- перехват `EXCEPTION_ACCESS_VIOLATION`
-- система recovery point
-- возможность избежать вылетов при ошибках
+- Standard function hooks.
+- `__usercall` bridge hooks.
+- Damage post hooks.
 
----
-
-### 🎨 Overlay интерфейс (ImGui)
-- встроенное debug-меню
-- вывод логов
-- работает поверх игры
-- открывается/закрывается клавишей **F1**
-
----
-
-### 🔁 Tick-система
-- выполнение пользовательского кода каждый кадр
-- используется для логики модов и обновлений
-
----
-
-## 🧱 Расширяемость API
-
-RafLoader API можно использовать не только через Lua:
-
-- поддержка использования API из **C/C++**
-- возможность писать собственные `.asi` плагины
-- доступ к экспортируемым функциям (`Core_*`)
-- интеграция с другими нативными модулями
-
-Это позволяет:
-- комбинировать Lua и нативный код
-- выносить тяжелую логику в C++
-- строить полноценные модульные системы
-
----
-
-## ⚠️ Ограничения
-
-- ориентирован на **x86**
-- UI работает только с **DirectX9**
-- требует знания адресов функций/памяти
-- ошибки в хуках могут приводить к крашу
-
----
-
-## 💡 Пример
+Example:
 
 ```lua
-local memory = _G.Engine.Memory
-local input  = _G.Engine.Input
-local hooks  = _G.Engine.Hooks
-local crash  = _G.Engine.VahCrash
+local hooks = _G.Engine.Hooks
 
--- биндим клавишу F
-input.bind(0x46, function()
-    print("Applying NOP")
-    memory.write_nop(0x401000, 5)
-end)
-
--- хук
 local original
-original = hooks.create(0x401000, "int (__cdecl *NAME)(int)", function(a)
-    print("Hooked:", a)
-    return original(a)
-end)
 
--- защита от краша
-crash.catch(0x403000, 0x404000)
+original = hooks.create(
+    0x401000,
+    "int (__cdecl *NAME)(int)",
+    function(value)
+        print("Hook:", value)
+        return original(value)
+    end
+)
 ```
 
 ---
 
-## 💡 Преимущества
+## 💾 Memory API
 
-- Lua + C++ в одном проекте
-- быстрый цикл разработки
-- прямой доступ к внутренностям игры
-- готовая система хуков
-- встроенный UI и логирование
-- crash recovery механизм
+Read and modify game memory.
 
+Available functions:
+
+```lua
+local memory = _G.Engine.Memory
+
+memory.write_nop(address, size)
+memory.patch(address, bytes)
+
+memory.read_int(address)
+memory.read_float(address)
+
+memory.write_int(address, value)
+memory.write_float(address, value)
+```
+
+Example:
+
+```lua
+memory.write_nop(0x401000, 5)
+
+memory.patch(0x401100, {
+    0x90,
+    0x90,
+    0x90
+})
+```
+
+---
+
+## 🔁 Tick Callbacks
+
+Execute Lua code every game update.
+
+```lua
+local tick = _G.Engine.Tick
+
+tick.add(function()
+    -- Called every frame
+end)
+```
+
+Clear all callbacks:
+
+```lua
+tick.clear()
+```
+
+---
+
+## 🛡️ Crash Recovery
+
+Register recovery points for known crashes.
+
+```lua
+local crash = _G.Engine.VahCrash
+
+crash.catch(
+    0x403000,
+    0x404000
+)
+```
+
+---
+
+## 📂 Script Loader
+
+All Lua scripts inside the `scripts` directory are loaded automatically.
+
+Example structure:
+
+```
+RafLoader.asi
+scripts/
+    test.lua
+    cheats.lua
+    ui.lua
+```
+
+Files beginning with `_` or `.` are ignored.
+
+---
+
+## 🎨 Debug Console
+
+Built-in ImGui console.
+
+Features:
+
+- Live log output.
+- Automatic logging from Lua `print()`.
+- Log file (`RafLoader.log`).
+- Toggle with **F1**.
+
+---
+
+# 🛠️ Complete Example
+
+```lua
+local memory = _G.Engine.Memory
+local hooks  = _G.Engine.Hooks
+local tick   = _G.Engine.Tick
+local crash  = _G.Engine.VahCrash
+
+memory.write_nop(0x401000, 5)
+
+local original
+
+original = hooks.create(
+    0x401050,
+    "int (__cdecl *NAME)(int)",
+    function(value)
+        print("Function called:", value)
+        return original(value)
+    end
+)
+
+tick.add(function()
+    -- Executed every frame
+end)
+
+crash.catch(
+    0x403000,
+    0x404000
+)
+```
+
+---
+
+# 🧱 Extending RafLoader
+
+The Lua API is exposed through:
+
+```lua
+_G.Engine.Memory
+_G.Engine.Hooks
+_G.Engine.Tick
+_G.Engine.VahCrash
+```
+
+Additional native functionality can be implemented through custom C++ plugins.
+
+---
+
+# ⚠️ Limitations
+
+- x86 only.
+- DirectX9 renderer.
+- Requires knowledge of game memory addresses.
+- Invalid hooks or memory patches may crash the game.
+
+---
+
+RafLoader provides a compact and lightweight framework for creating Lua-powered mods, runtime patches, hooks, and debugging tools for **Rise and Fall: Civilization at War**.

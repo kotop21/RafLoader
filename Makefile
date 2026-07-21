@@ -1,17 +1,25 @@
-VERSION = 0.1.3
+VERSION = 0.2.1
 
 BUILD_DIR = build
 
 CXX = i686-w64-mingw32-g++
 
-CXXFLAGS = -m32 -std=c++17 -O2 -shared \
+CXXFLAGS = -m32 -std=c++17 -O2 -shared -s \
+           -ffunction-sections -fdata-sections \
            -DRAF_VERSION=\"$(VERSION)\" \
-           -I./include -I./include/lua -I./lib/luajit -I./lib/minhook -I./lib/imgui
+           -I./include -I./include/lua -I./lib/luajit \
+           -I./lib/minhook -I./lib/minhook/include -I./lib/minhook/src -I./lib/imgui
 
-LDFLAGS = lib/minhook/MinHook.x86.lib ./lua51.dll \
-          -static \
+LDFLAGS = -static -static-libgcc -static-libstdc++ \
+          -Wl,--gc-sections \
+          ./lib/luajit/libluajit.a \
           -Wl,--subsystem,windows:5.1 \
           -luser32 -lkernel32 -lwinmm -ld3d9 -lgdi32 -ldwmapi
+
+MINHOOK_SRC = lib/minhook/src/buffer.c \
+              lib/minhook/src/hook.c \
+              lib/minhook/src/trampoline.c \
+              lib/minhook/src/hde/hde32.c
 
 IMGUI_SRC = lib/imgui/imgui.cpp \
             lib/imgui/imgui_draw.cpp \
@@ -20,7 +28,7 @@ IMGUI_SRC = lib/imgui/imgui.cpp \
             lib/imgui/imgui_impl_dx9.cpp \
             lib/imgui/imgui_impl_win32.cpp
 
-SRC = src/main.cpp src/thread.cpp src/memory.cpp src/HooksManager/DefaultHooks.cpp src/HooksManager/DataPathHook.cpp src/CrashHandler.cpp src/ConsoleState.cpp src/ImGuiMenu.cpp src/RenderHook.cpp $(IMGUI_SRC)
+SRC = src/main.cpp src/thread.cpp src/memory.cpp src/HooksManager/DefaultHooks.cpp src/CrashHandler.cpp src/ConsoleState.cpp src/ImGuiMenu.cpp src/RenderHook.cpp $(IMGUI_SRC) $(MINHOOK_SRC)
 
 OUT = $(BUILD_DIR)/RafLoader.asi
 

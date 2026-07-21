@@ -1,0 +1,57 @@
+name: Build RafLoader ASI
+
+on:
+  push:
+    branches: [ main, beta ]
+  pull_request:
+    branches: [ main, beta ]
+
+jobs:
+  build:
+    name: Build (${{ matrix.branch }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        branch: [ main, beta ]
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ matrix.branch }}
+
+      - name: Install MinGW & Build Tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mingw-w64 g++-mingw-w64-i686 make luajit
+
+      - name: Verify Environment & Tools
+        run: |
+          i686-w64-mingw32-g++ --version
+          make --version
+          luajit -v
+
+      - name: Setup LuaJIT CLI for Builder
+        run: |
+          chmod +x ./lib/luajit/luajit || true
+          cp /usr/bin/luajit ./lib/luajit/luajit || true
+
+      - name: Build Project
+        run: |
+          make clean
+          make
+
+      - name: Prepare Artifact Package
+        run: |
+          mkdir -p release_pack
+          cp build/RafLoader.asi release_pack/
+          cp build/RafLoader_SDK.h release_pack/
+          if [ -d "scripts" ]; then cp -r scripts release_pack/; fi
+
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: RafLoader-${{ matrix.branch }}-${{ github.sha }}
+          path: release_pack/
+          retention-days: 7

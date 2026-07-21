@@ -7,87 +7,144 @@
 #include <imgui.h>
 #include <imgui_impl_dx9.h>
 #include <imgui_impl_win32.h>
+
 #include <vector>
 #include <windows.h>
 
 typedef void (*TickCallback_t)();
+
 std::vector<TickCallback_t> g_TickCallbacks;
 
 extern "C" __declspec(dllexport) void __cdecl
 Core_RegisterTickCallback(TickCallback_t cb) {
-  g_TickCallbacks.push_back(cb);
+  if (cb)
+    g_TickCallbacks.push_back(cb);
 }
 
 typedef HRESULT(APIENTRY *Present_t)(IDirect3DDevice9 *, const RECT *,
                                      const RECT *, HWND, const RGNDATA *);
+
 typedef HRESULT(APIENTRY *Reset_t)(IDirect3DDevice9 *, D3DPRESENT_PARAMETERS *);
+
+// __thiscall для MSVC x86 эмулируется через __fastcall (ECX = this, EDX =
+// dummy)
+typedef void(__fastcall *GameLoop_t)(void *pThis, void *edxDummy);
 
 Present_t oPresent = nullptr;
 Reset_t oReset = nullptr;
+GameLoop_t oGameLoop = nullptr;
 
 bool g_ImGuiInitialized = false;
 WNDPROC oWndProc = nullptr;
 
-extern LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg,
-                                              WPARAM wParam, LPARAM lParam);
+extern LRESULT ImGui_ImplWin32_WndProcHandler(HWND, UINT, WPARAM, LPARAM);
 
 LRESULT __stdcall WndProc(const HWND hWnd, UINT uMsg, WPARAM wParam,
                           LPARAM lParam) {
-  if (uMsg == WM_KEYDOWN && wParam == 0x70) {
+  if (uMsg == WM_KEYDOWN && wParam == VK_F1) {
     GIsConsoleOpen = !GIsConsoleOpen;
-    return true;
+    return TRUE;
   }
+
   if (GIsConsoleOpen &&
       ImGui_ImplWin32_WndProcHandler(hWnd, uMsg, wParam, lParam))
-    return true;
+    return TRUE;
+
   if (GIsConsoleOpen && (uMsg == WM_LBUTTONDOWN || uMsg == WM_RBUTTONDOWN ||
-                         uMsg == WM_MOUSEWHEEL))
-    return true;
+                         uMsg == WM_MOUSEWHEEL || uMsg == WM_MOUSEMOVE))
+    return TRUE;
 
   return CallWindowProc(oWndProc, hWnd, uMsg, wParam, lParam);
 }
 
 HRESULT APIENTRY hkReset(IDirect3DDevice9 *pDevice,
                          D3DPRESENT_PARAMETERS *pPresentationParameters) {
-  if (g_ImGuiInitialized) {
+
+  if (g_ImGuiInitialized)
     ImGui_ImplDX9_InvalidateDeviceObjects();
-  }
 
-  HRESULT result = oReset(pDevice, pPresentationParameters);
+  HRESULT hr = oReset(pDevice, pPresentationParameters);
 
-  if (g_ImGuiInitialized && SUCCEEDED(result)) {
+  if (g_ImGuiInitialized && SUCCEEDED(hr))
     ImGui_ImplDX9_CreateDeviceObjects();
+
+  return hr;
+}
+
+void __fastcall hkGameLoop(void *pThis, void *edxDummy) {
+  if (g_ImGuiInitialized) {
+    std::vector<TickCallback_t> callbacks = g_TickCallbacks;
+    for (auto cb : callbacks) {
+      if (cb)
+        cb();
+    }
   }
 
-  return result;
+  if (oGameLoop) {
+    oGameLoop(pThis, edxDummy);
+  }
 }
 
 HRESULT APIENTRY hkPresent(IDirect3DDevice9 *pDevice, const RECT *pSourceRect,
                            const RECT *pDestRect, HWND hDestWindowOverride,
                            const RGNDATA *pDirtyRegion) {
+
+  if (!pDevice)
+    return oPresent(pDevice, pSourceRect, pDestRect, hDestWindowOverride,
+                    pDirtyRegion);
+
+  if (pDevice->TestCooperativeLevel() != D3D_OK) {
+    return oPresent(pDevice, pSourceRect, pDestRect, hDestWindowOverride,
+                    pDirtyRegion);
+  }
+
   if (!g_ImGuiInitialized) {
-    D3DDEVICE_CREATION_PARAMETERS params;
-    pDevice->GetCreationParameters(&params);
+
+    D3DDEVICE_CREATION_PARAMETERS params{};
+
+    if (FAILED(pDevice->GetCreationParameters(&params)))
+      return oPresent(pDevice, pSourceRect, pDestRect, hDestWindowOverride,
+                      pDirtyRegion);
 
     HWND hWindow = params.hFocusWindow;
-    if (!hWindow)
+
+    if (!hWindow || !IsWindow(hWindow))
       hWindow = GetForegroundWindow();
+
+    if (!hWindow || !IsWindow(hWindow))
+      return oPresent(pDevice, pSourceRect, pDestRect, hDestWindowOverride,
+                      pDirtyRegion);
 
     oWndProc =
         (WNDPROC)SetWindowLongPtr(hWindow, GWL_WNDPROC, (LONG_PTR)WndProc);
 
+    if (!oWndProc)
+      return oPresent(pDevice, pSourceRect, pDestRect, hDestWindowOverride,
+                      pDirtyRegion);
+
     ImGui::CreateContext();
-    ImGui_ImplWin32_Init(hWindow);
-    ImGui_ImplDX9_Init(pDevice);
+
+    if (!ImGui_ImplWin32_Init(hWindow)) {
+      SetWindowLongPtr(hWindow, GWL_WNDPROC, (LONG_PTR)oWndProc);
+      ImGui::DestroyContext();
+      return oPresent(pDevice, pSourceRect, pDestRect, hDestWindowOverride,
+                      pDirtyRegion);
+    }
+
+    if (!ImGui_ImplDX9_Init(pDevice)) {
+      ImGui_ImplWin32_Shutdown();
+      SetWindowLongPtr(hWindow, GWL_WNDPROC, (LONG_PTR)oWndProc);
+      ImGui::DestroyContext();
+      return oPresent(pDevice, pSourceRect, pDestRect, hDestWindowOverride,
+                      pDirtyRegion);
+    }
+
     g_ImGuiInitialized = true;
   }
 
-  for (auto cb : g_TickCallbacks) {
-    cb();
-  }
-
   IDirect3DStateBlock9 *stateBlock = nullptr;
-  if (pDevice->CreateStateBlock(D3DSBT_ALL, &stateBlock) == D3D_OK) {
+
+  if (SUCCEEDED(pDevice->CreateStateBlock(D3DSBT_ALL, &stateBlock))) {
     stateBlock->Capture();
   }
 
@@ -100,7 +157,7 @@ HRESULT APIENTRY hkPresent(IDirect3DDevice9 *pDevice, const RECT *pSourceRect,
   ImGui::EndFrame();
   ImGui::Render();
 
-  if (pDevice->BeginScene() == D3D_OK) {
+  if (SUCCEEDED(pDevice->BeginScene())) {
     ImGui_ImplDX9_RenderDrawData(ImGui::GetDrawData());
     pDevice->EndScene();
   }
@@ -109,7 +166,6 @@ HRESULT APIENTRY hkPresent(IDirect3DDevice9 *pDevice, const RECT *pSourceRect,
     stateBlock->Apply();
     stateBlock->Release();
   }
-
   return oPresent(pDevice, pSourceRect, pDestRect, hDestWindowOverride,
                   pDirtyRegion);
 }
@@ -117,37 +173,106 @@ HRESULT APIENTRY hkPresent(IDirect3DDevice9 *pDevice, const RECT *pSourceRect,
 void InitRenderHook() {
   HWND dummyWindow = CreateWindowA(
       "BUTTON", "Dummy", WS_SYSMENU | WS_MINIMIZEBOX, CW_USEDEFAULT,
-      CW_USEDEFAULT, 300, 300, NULL, NULL, NULL, NULL);
+      CW_USEDEFAULT, 300, 300, nullptr, nullptr, nullptr, nullptr);
 
-  IDirect3D9 *d3d = Direct3DCreate9(D3D_SDK_VERSION);
+  if (!dummyWindow)
+    return;
+
+  HMODULE hD3D9 = GetModuleHandleA("d3d9.dll");
+  if (!hD3D9) {
+    hD3D9 = LoadLibraryA("d3d9.dll");
+  }
+
+  if (!hD3D9) {
+    DestroyWindow(dummyWindow);
+    return;
+  }
+
+  typedef IDirect3D9 *(WINAPI * D3DCreate9_t)(UINT);
+  D3DCreate9_t pDirect3DCreate9 =
+      (D3DCreate9_t)GetProcAddress(hD3D9, "Direct3DCreate9");
+
+  if (!pDirect3DCreate9) {
+    DestroyWindow(dummyWindow);
+    return;
+  }
+
+  IDirect3D9 *d3d = pDirect3DCreate9(D3D_SDK_VERSION);
+
   if (!d3d) {
     DestroyWindow(dummyWindow);
     return;
   }
 
-  D3DPRESENT_PARAMETERS d3dpp = {};
+  D3DPRESENT_PARAMETERS d3dpp{};
   d3dpp.Windowed = TRUE;
   d3dpp.SwapEffect = D3DSWAPEFFECT_DISCARD;
   d3dpp.hDeviceWindow = dummyWindow;
 
   IDirect3DDevice9 *dummyDevice = nullptr;
-  if (SUCCEEDED(d3d->CreateDevice(
-          D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, dummyWindow,
-          D3DCREATE_SOFTWARE_VERTEXPROCESSING, &d3dpp, &dummyDevice))) {
-    void **vTable = *reinterpret_cast<void ***>(dummyDevice);
 
-    void *presentAddress = vTable[17];
-    void *resetAddress = vTable[16];
+  HRESULT hr = d3d->CreateDevice(
+      D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, dummyWindow,
+      D3DCREATE_SOFTWARE_VERTEXPROCESSING, &d3dpp, &dummyDevice);
 
-    MH_CreateHook(presentAddress, (void *)hkPresent, (void **)&oPresent);
-    MH_CreateHook(resetAddress, (void *)hkReset, (void **)&oReset);
-
-    MH_EnableHook(presentAddress);
-    MH_EnableHook(resetAddress);
-
-    dummyDevice->Release();
+  if (FAILED(hr) || !dummyDevice) {
+    d3d->Release();
+    DestroyWindow(dummyWindow);
+    return;
   }
 
+  void **vTable = *reinterpret_cast<void ***>(dummyDevice);
+
+  void *presentAddress = vTable[17];
+  void *resetAddress = vTable[16];
+  void *updateSceneAddress = (void *)0x0075D8C0;
+
+  if (MH_CreateHook(presentAddress, (LPVOID)hkPresent,
+                    reinterpret_cast<LPVOID *>(&oPresent)) != MH_OK) {
+
+    dummyDevice->Release();
+    d3d->Release();
+    DestroyWindow(dummyWindow);
+    return;
+  }
+
+  if (MH_CreateHook(resetAddress, (LPVOID)hkReset,
+                    reinterpret_cast<LPVOID *>(&oReset)) != MH_OK) {
+
+    MH_RemoveHook(presentAddress);
+
+    dummyDevice->Release();
+    d3d->Release();
+    DestroyWindow(dummyWindow);
+    return;
+  }
+
+  if (MH_CreateHook(updateSceneAddress, (LPVOID)hkGameLoop,
+                    reinterpret_cast<LPVOID *>(&oGameLoop)) != MH_OK) {
+
+    MH_RemoveHook(presentAddress);
+    MH_RemoveHook(resetAddress);
+
+    dummyDevice->Release();
+    d3d->Release();
+    DestroyWindow(dummyWindow);
+    return;
+  }
+
+  if (MH_EnableHook(MH_ALL_HOOKS) != MH_OK) {
+
+    MH_RemoveHook(presentAddress);
+    MH_RemoveHook(resetAddress);
+    MH_RemoveHook(updateSceneAddress);
+
+    dummyDevice->Release();
+    d3d->Release();
+    DestroyWindow(dummyWindow);
+    return;
+  }
+
+  dummyDevice->Release();
   d3d->Release();
+
   DestroyWindow(dummyWindow);
 }
